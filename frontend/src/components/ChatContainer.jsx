@@ -15,17 +15,32 @@ const ChatContainer = () => {
     selectedUser,
     subscribeToMessages,
     unsubscribeFromMessages,
+    clearUnreadCount,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
 
-  useEffect(() => {
-    getMessages(selectedUser._id);
+useEffect(() => {
+  if (!selectedUser?._id) return;
+  let mounted = true;
 
+  const load = async () => {
+    await getMessages(selectedUser._id);
+    if (mounted) {
+      // clear unread badges for this opened chat
+      clearUnreadCount(selectedUser._id);
+    }
+    // subscribe after messages are loaded
     subscribeToMessages();
+  };
 
-    return () => unsubscribeFromMessages();
-  }, [selectedUser._id, getMessages, subscribeToMessages, unsubscribeFromMessages]);
+  load();
+
+  return () => {
+    mounted = false;
+    unsubscribeFromMessages();
+  };
+}, [selectedUser?._id, getMessages, subscribeToMessages, unsubscribeFromMessages, clearUnreadCount]);
 
   useEffect(() => {
     if (messageEndRef.current && messages) {

@@ -8,7 +8,22 @@ export const getUserForSideBar = async (req,res) => {
         const loggedInUserId = req.user._id;
         const fillerUser = await User.find({ _id: { $ne: loggedInUserId}}).select("-password");
         
-        res.status(200).json(fillerUser);
+        const usersWithUnreadCount = await Promise.all(
+            fillerUser.map(async (user) => {
+                const unreadCount = await Message.countDocuments({
+                    senderId: user._id,
+                    receiverId: loggedInUserId,
+                    isRead: false,
+                });
+
+                return {
+                    ...user.toObject(),
+                    unreadCount,
+                }
+            })
+        )
+
+        res.status(200).json(usersWithUnreadCount);
     } catch (error) {
         console.log("Error in getUserSideBar controller : ", error);
         res.status(500).json({message: "Internal Server Error"});
@@ -26,6 +41,21 @@ export const getMessages = async (req, res) => {
               { senderId: userToChatId, receiverId: myId },
             ],
           });
+
+          // clear the unread messages
+          await Message.updateMany(
+            {
+                senderId: userToChatId,
+                receiverId: myId,
+                isRead: false,
+            },
+            {
+                $set: {
+                    isRead: true,
+                    readAt: new Date(),
+                }
+            }
+          )
 
         res.status(200).json(messages);
     } catch (error) {
