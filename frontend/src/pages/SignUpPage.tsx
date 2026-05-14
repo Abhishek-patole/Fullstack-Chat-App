@@ -4,6 +4,8 @@ import { Eye, EyeOff, Loader2, Lock, Mail, MessageSquare, User } from "lucide-re
 import { Link } from "react-router-dom";
 import AuthImagePattern from "../components/AuthImagePattern";
 import toast from "react-hot-toast";
+import { SignUpFormSchema } from "../lib/validation";
+import { ZodError } from "zod";
 
 const SignUpPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -12,13 +14,16 @@ const SignUpPage: React.FC = () => {
   const { signup, isSigningUp } = useAuthStore();
 
   const validateForm = () => {
-    if (!formData.fullName.trim()) return toast.error("Full name is required");
-    if (!formData.email.trim()) return toast.error("Email is required");
-    if (!/\S+@\S+\.\S+/.test(formData.email)) return toast.error("Invalid email format");
-    if (!formData.password) return toast.error("Password is required");
-    if (formData.password.length < 6) return toast.error("Password must be at least 6 characters");
-
-    return true;
+    try {
+      SignUpFormSchema.parse(formData);
+      return true;
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const fieldError = error.issues[0];
+        toast.error(fieldError.message);
+      }
+      return false;
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {

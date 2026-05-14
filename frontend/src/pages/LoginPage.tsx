@@ -3,6 +3,9 @@ import { useAuthStore } from "../store/useAuthStore";
 import AuthImagePattern from "../components/AuthImagePattern";
 import { Link } from "react-router-dom";
 import { Eye, EyeOff, Loader2, Lock, Mail, MessageSquare } from "lucide-react";
+import toast from "react-hot-toast";
+import { LoginFormSchema } from "../lib/validation";
+import { ZodError } from "zod";
 
 const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -11,7 +14,15 @@ const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    login(formData);
+    try {
+      LoginFormSchema.parse(formData);
+      login(formData);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        const fieldError = error.issues[0];
+        toast.error(fieldError.message);
+      }
+    }
   };
 
   return (

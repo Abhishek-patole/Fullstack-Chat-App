@@ -1,8 +1,10 @@
 import type { Request, Response } from "express";
+import { ZodError } from "zod";
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
 import Message from "../models/message.model.js";
 import User from "../models/user.model.js";
+import { SendMessageSchema, ReceiverIdSchema } from "../schemas/message.schema.js";
 
 type AuthRequest = Request & {
   user?: any;
@@ -70,8 +72,10 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
 
 export const sendMessage = async (req: AuthRequest, res: Response) => {
   try {
-    const { text, image } = req.body;
-    const { id: receiverId } = req.params;
+    const validatedBody = SendMessageSchema.parse(req.body);
+    const validatedParams = ReceiverIdSchema.parse(req.params);
+    const { text, image } = validatedBody;
+    const { id: receiverId } = validatedParams;
     const senderId = req.user?._id;
 
     let imageUrl;
@@ -96,6 +100,10 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(newMessage);
   } catch (error) {
+    if (error instanceof ZodError) {
+      const fieldError = error.issues[0];
+      return res.status(400).json({ message: fieldError.message });
+    }
     console.log("Error in sendMessage controller : ", error);
     res.status(500).json({ message: "Internal Server Error" });
   }

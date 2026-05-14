@@ -2,6 +2,8 @@ import React, { useRef, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { Image, Send, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { MessageFormSchema } from "../lib/validation";
+import { ZodError } from "zod";
 
 const MessageInput: React.FC = () => {
   const [text, setText] = useState("");
@@ -31,16 +33,20 @@ const MessageInput: React.FC = () => {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim() && !imagePreview) return;
-
     try {
+      MessageFormSchema.parse({ text, imagePreview });
       await sendMessage({ text: text.trim(), image: imagePreview });
 
       setText("");
       setImagePreview(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
-      console.error("Failed to send message:", error);
+      if (error instanceof ZodError) {
+        const fieldError = error.issues[0];
+        toast.error(fieldError.message);
+      } else {
+        console.error("Failed to send message:", error);
+      }
     }
   };
 
