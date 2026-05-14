@@ -1,26 +1,22 @@
 import type { Request, Response } from "express";
+import { ZodError } from "zod";
 import bcrypt from "bcryptjs";
 import cloudinary from "../lib/cloudinary.js";
 import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
+import { SignupSchema, LoginSchema } from "../schemas/auth.schema.js";
 
 type AuthRequest = Request & {
   user?: any;
 };
 
 export const signup = async (req: Request, res: Response) => {
-  const { fullName, email, password } = req.body;
   try {
-    if (!fullName || !email || !password) {
-      return res.status(400).json({ message: "All field are required" });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be atleast 6 characters" });
-    }
+    const validatedData = SignupSchema.parse(req.body);
+    const { fullName, email, password } = validatedData;
 
     const user = await User.findOne({ email });
-    if (user) return res.status(400).json({ message: "Email already exits" });
+    if (user) return res.status(400).json({ message: "Email already exists" });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -45,15 +41,20 @@ export const signup = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Invalid user data" });
     }
   } catch (error) {
+    if (error instanceof ZodError) {
+      const fieldError = error.issues[0];
+      return res.status(400).json({ message: fieldError.message });
+    }
     console.log("Error in signup controller : ", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
 export const login = async (req: Request, res: Response) => {
-  const { email, password } = req.body;
-
   try {
+    const validatedData = LoginSchema.parse(req.body);
+    const { email, password } = validatedData;
+
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
@@ -73,6 +74,10 @@ export const login = async (req: Request, res: Response) => {
       profilePic: user.profilePic,
     });
   } catch (error) {
+    if (error instanceof ZodError) {
+      const fieldError = error.issues[0];
+      return res.status(400).json({ message: fieldError.message });
+    }
     console.log("Error in login controller : ", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
