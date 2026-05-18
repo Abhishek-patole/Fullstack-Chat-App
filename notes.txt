@@ -44,7 +44,7 @@ Conversation analytics: see your most active times, topics, or contacts.
 
 ******priority******
 Switch to TypeScript (if you want long-term quality) : Completed
-Add Zod validation (for backend and forms)
+Add Zod validation (for backend and forms) : Completed
 Implement OAuth (Google/GitHub) and refresh tokens
 Finish core chat features (reply, message status, edit/delete, file sharing)
 Add unique/advanced features (AI, polls, group chat, etc.)

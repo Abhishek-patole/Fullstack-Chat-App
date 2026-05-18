@@ -59,9 +59,32 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
         $set: {
           isRead: true,
           readAt: new Date(),
+          status: "seen",
         },
       }
     );
+
+    // Find which messages were marked as seen so we can notify the original sender
+    const newlySeen = await Message.find({
+      senderId: userToChatId,
+      receiverId: myId,
+      isRead: true,
+      readAt: { $ne: null },
+    }).select("_id readAt");
+
+    if (newlySeen.length > 0) {
+      const senderSocketId = getReceiverSocketId(String(userToChatId));
+      if (senderSocketId) {
+        newlySeen.forEach((m) => {
+          io.to(senderSocketId).emit("messageStatusUpdated", {
+            messageId: m._id,
+            status: "seen",
+            readAt: m.readAt,
+            receiverId: myId,
+          });
+        });
+      }
+    }
 
     res.status(200).json(messages);
   } catch (error) {
@@ -93,12 +116,37 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
 
     await newMessage.save();
 
+    let responseMessage = newMessage;
+
     const receiverSocketId = getReceiverSocketId(String(receiverId));
     if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newMessage", newMessage);
+      // mark delivered since recipient is online and will receive the socket event
+      const deliveredAt = new Date();
+      const updatedMessage = await Message.findByIdAndUpdate(
+        newMessage._id,
+        { status: "delivered", deliveredAt },
+        { new: true }
+      );
+
+      if (updatedMessage) {
+        responseMessage = updatedMessage;
+      }
+
+      io.to(receiverSocketId).emit("newMessage", updatedMessage || newMessage);
+
+      // notify the sender (if connected) that message was delivered
+      const senderSocketId = getReceiverSocketId(String(senderId));
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("messageStatusUpdated", {
+          messageId: updatedMessage?._id || newMessage._id,
+          status: "delivered",
+          deliveredAt,
+          receiverId,
+        });
+      }
     }
 
-    res.status(201).json(newMessage);
+    res.status(201).json(responseMessage);
   } catch (error) {
     if (error instanceof ZodError) {
       const fieldError = error.issues[0];
