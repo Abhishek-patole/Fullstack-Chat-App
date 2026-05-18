@@ -6,6 +6,13 @@ import { useAuthStore } from "./useAuthStore";
 type Message = { [k: string]: any };
 type UserItem = { _id: string; unreadCount?: number; [k: string]: any };
 
+const normalizeMessage = (message: any) => ({
+  ...message,
+  _id: String(message._id),
+  senderId: typeof message.senderId === "object" ? String(message.senderId?._id ?? message.senderId) : String(message.senderId),
+  receiverId: typeof message.receiverId === "object" ? String(message.receiverId?._id ?? message.receiverId) : String(message.receiverId),
+});
+
 type ChatState = {
   messages: Message[];
   users: UserItem[];
@@ -14,6 +21,7 @@ type ChatState = {
   isMessagesLoading: boolean;
   unreadCounts: Record<string, number>;
   newMessageListener: ((msg: any) => void) | null;
+  messageStatusListener: ((payload: any) => void) | null;
 
   getUsers: () => Promise<void>;
   getMessages: (userId: string) => Promise<void>;
@@ -33,6 +41,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isMessagesLoading: false,
   unreadCounts: {},
   newMessageListener: null,
+  messageStatusListener: null,
 
   getUsers: async () => {
     set({ isUsersLoading: true });
@@ -56,7 +65,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ isMessagesLoading: true });
     try {
       const res = await axiosInstance.get(`/messages/${userId}`);
-      set({ messages: res.data });
+      set({ messages: res.data.map(normalizeMessage) });
     } catch (error) {
       toast.error((error as any)?.response?.data?.message || String(error));
     } finally {
@@ -68,7 +77,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { selectedUser, messages } = get();
     try {
       const res = await axiosInstance.post(`/messages/send/${selectedUser?._id}`, messageData);
-      set({ messages: [...messages, res.data] });
+      set({ messages: [...messages, normalizeMessage(res.data)] });
     } catch (error) {
       toast.error((error as any)?.response?.data?.message || String(error));
     }
@@ -109,35 +118,92 @@ export const useChatStore = create<ChatState>((set, get) => ({
       socket.off("newMessage", currentListener);
     }
 
+    const currentStatusListener = get().messageStatusListener;
+    if (currentStatusListener) {
+      socket.off("messageStatusUpdated", currentStatusListener);
+    }
+
     const listener = (newMessage: any) => {
       const { selectedUser, messages } = get();
+      const socket = useAuthStore.getState().socket;
+      const normalizedMessage = normalizeMessage(newMessage);
 
-      const isFromMe = newMessage.senderId === authUser._id;
+      const isFromMe = normalizedMessage.senderId === String(authUser._id);
       if (isFromMe) return;
 
-      const isFromOpenedChat = selectedUser?._id === newMessage.senderId;
+      const isFromOpenedChat = selectedUser?._id === normalizedMessage.senderId;
 
       if (isFromOpenedChat) {
-        set({ messages: [...messages, newMessage] });
-        get().clearUnreadCount(newMessage.senderId);
+        set({ messages: [...messages, normalizedMessage] });
+        get().clearUnreadCount(normalizedMessage.senderId);
+
+        // This message is visible in the open chat, so mark it as seen immediately.
+        socket?.emit("messageSeen", { messageId: normalizedMessage._id });
       } else {
-        get().incrementUnreadCount(newMessage.senderId);
+        get().incrementUnreadCount(normalizedMessage.senderId);
       }
     };
 
     socket.on("newMessage", listener);
     set({ newMessageListener: listener });
+
+    // attach message status update listener
+    const statusListener = (payload: any) => {
+      const { messageId, status, deliveredAt, readAt, receiverId } = payload;
+      const { messages, unreadCounts, selectedUser } = get();
+      const normalizedMessageId = String(messageId);
+
+      // update messages in the current chat if present
+      const updatedMessages = messages.map((m: any) => {
+        if (String(m._id) === normalizedMessageId) {
+          return {
+            ...m,
+            status: status || m.status,
+            deliveredAt: deliveredAt || m.deliveredAt,
+            readAt: readAt || m.readAt,
+          };
+        }
+        return m;
+      });
+
+      set({ messages: updatedMessages });
+
+      // if the message was seen by the receiver and that receiver is the currently selected user, clear unread
+      if (status === "seen") {
+        const senderId = String(selectedUser?._id) === String(receiverId) ? String(useAuthStore.getState().authUser?._id) : String(receiverId);
+        // If the seen message belongs to the selectedUser chat, clear its unread count
+        if (selectedUser && String(selectedUser._id) === String(receiverId)) {
+          get().clearUnreadCount(String(receiverId));
+        } else if (senderId) {
+          // otherwise ensure unreadCounts for that sender is zero
+          set({
+            unreadCounts: {
+              ...unreadCounts,
+              [senderId]: 0,
+            },
+          });
+        }
+      }
+    };
+
+    socket.on("messageStatusUpdated", statusListener);
+    set({ messageStatusListener: statusListener });
   },
 
   unsubscribeFromMessages: () => {
     const socket = useAuthStore.getState().socket;
     const listener = get().newMessageListener;
+    const statusListener = get().messageStatusListener;
 
     if (socket && listener) {
       socket.off("newMessage", listener);
     }
+    if (socket && statusListener) {
+      socket.off("messageStatusUpdated", statusListener);
+    }
 
     set({ newMessageListener: null });
+    set({ messageStatusListener: null });
   },
 
   setSelectedUser: (selectedUser) => {

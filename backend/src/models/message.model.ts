@@ -18,10 +18,22 @@ const messageSchema = new mongoose.Schema(
     image: {
       type: String,
     },
-    isRead: {
-      type: Boolean,
-      default: false,
-    },
+      // lifecycle status: 'sent' | 'delivered' | 'seen'
+      status: {
+        type: String,
+        enum: ["sent", "delivered", "seen"],
+        default: "sent",
+      },
+
+      // when the message was delivered to the recipient's device
+      deliveredAt: {
+        type: Date,
+        default: null,
+      },
+      isRead: {
+        type: Boolean,
+        default: false,
+      },
     readAt: {
       type: Date,
       default: null,
