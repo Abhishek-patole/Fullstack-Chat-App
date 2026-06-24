@@ -1,10 +1,15 @@
 import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import cloudinary from "../lib/cloudinary.js";
+import { isWithinEditWindow } from "../lib/messageLifecycle.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
 import Message from "../models/message.model.js";
 import User from "../models/user.model.js";
-import { SendMessageSchema, ReceiverIdSchema } from "../schemas/message.schema.js";
+import {
+  EditMessageSchema,
+  SendMessageSchema,
+  ReceiverIdSchema,
+} from "../schemas/message.schema.js";
 
 type AuthRequest = Request & {
   user?: any;
@@ -49,44 +54,42 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
       ],
     });
 
-    await Message.updateMany(
-      {
-        senderId: userToChatId,
-        receiverId: myId,
-        isRead: false,
-      },
-      {
-        $set: {
-          isRead: true,
-          readAt: new Date(),
-          status: "seen",
-        },
-      }
-    );
-
-    // Find which messages were marked as seen so we can notify the original sender
-    const newlySeen = await Message.find({
+    const unreadMessages = await Message.find({
       senderId: userToChatId,
       receiverId: myId,
-      isRead: true,
-      readAt: { $ne: null },
-    }).select("_id readAt");
+      isRead: false,
+    }).select("_id");
 
-    if (newlySeen.length > 0) {
+    const unreadMessageIds = unreadMessages.map((message) => message._id);
+
+    if (unreadMessageIds.length > 0) {
+      await Message.updateMany(
+        { _id: { $in: unreadMessageIds } },
+        {
+          $set: {
+            isRead: true,
+            readAt: new Date(),
+            status: "seen",
+          },
+        }
+      );
+    }
+
+    if (unreadMessages.length > 0) {
       const senderSocketId = getReceiverSocketId(String(userToChatId));
       if (senderSocketId) {
-        newlySeen.forEach((m) => {
+        unreadMessages.forEach((m) => {
           io.to(senderSocketId).emit("messageStatusUpdated", {
             messageId: m._id,
             status: "seen",
-            readAt: m.readAt,
+            readAt: new Date(),
             receiverId: myId,
           });
         });
       }
     }
 
-    res.status(200).json(messages);
+    res.status(200).json(messages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()));
   } catch (error) {
     console.log("Error in getMessages controller : ", error);
     res.status(500).json({ message: "Internal Server Error" });
@@ -153,6 +156,104 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: fieldError.message });
     }
     console.log("Error in sendMessage controller : ", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const editMessage = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id: messageId } = req.params;
+    const { text } = EditMessageSchema.parse(req.body);
+    const currentUserId = String(req.user?._id);
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
+    }
+
+    if (String(message.senderId) !== currentUserId) {
+      return res.status(403).json({ message: "You can only edit your own messages" });
+    }
+
+    if (message.isDeleted) {
+      return res.status(400).json({ message: "Deleted messages cannot be edited" });
+    }
+
+    if (!isWithinEditWindow(message.createdAt)) {
+      return res.status(400).json({ message: "Message edit window has expired" });
+    }
+
+    message.text = text;
+    message.editedAt = new Date();
+    await message.save();
+
+    const receiverSocketId = getReceiverSocketId(String(message.receiverId));
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("messageUpdated", message);
+    }
+
+    const senderSocketId = getReceiverSocketId(currentUserId);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messageUpdated", message);
+    }
+
+    res.status(200).json(message);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      const fieldError = error.issues[0];
+      return res.status(400).json({ message: fieldError.message });
+    }
+    console.log("Error in editMessage controller : ", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const deleteMessage = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id: messageId } = req.params;
+    const currentUserId = String(req.user?._id);
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
+    }
+
+    if (String(message.senderId) !== currentUserId) {
+      return res.status(403).json({ message: "You can only delete your own messages" });
+    }
+
+    if (message.isDeleted) {
+      return res.status(200).json(message);
+    }
+
+    message.isDeleted = true;
+    message.deletedAt = new Date();
+    message.deletedBy = message.senderId;
+    message.text = "";
+    message.image = undefined;
+    await message.save();
+
+    const receiverSocketId = getReceiverSocketId(String(message.receiverId));
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("messageDeleted", {
+        messageId: message._id,
+        deletedAt: message.deletedAt,
+        deletedBy: message.deletedBy,
+      });
+    }
+
+    const senderSocketId = getReceiverSocketId(currentUserId);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messageDeleted", {
+        messageId: message._id,
+        deletedAt: message.deletedAt,
+        deletedBy: message.deletedBy,
+      });
+    }
+
+    res.status(200).json(message);
+  } catch (error) {
+    console.log("Error in deleteMessage controller : ", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };

@@ -18,6 +18,23 @@ const messageSchema = new mongoose.Schema(
     image: {
       type: String,
     },
+    editedAt: {
+      type: Date,
+      default: null,
+    },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
       // lifecycle status: 'sent' | 'delivered' | 'seen'
       status: {
         type: String,
