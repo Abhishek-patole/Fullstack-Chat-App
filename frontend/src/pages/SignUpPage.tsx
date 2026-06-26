@@ -6,12 +6,13 @@ import AuthImagePattern from "../components/AuthImagePattern";
 import toast from "react-hot-toast";
 import { SignUpFormSchema } from "../lib/validation";
 import { ZodError } from "zod";
+import GoogleAuthButton from "../components/GoogleAuthButton";
 
 const SignUpPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ fullName: "", email: "", password: "" });
 
-  const { signup, isSigningUp } = useAuthStore();
+  const { signup, googleLogin, isSigningUp, isGoogleAuthenticating } = useAuthStore();
 
   const validateForm = () => {
     try {
@@ -74,6 +75,16 @@ const SignUpPage: React.FC = () => {
 
             <button type="submit" className="btn btn-primary w-full" disabled={isSigningUp}>{isSigningUp ? (<><Loader2 className="size-5 animate-spin" /> Loading...</>) : ("Create Account")}</button>
           </form>
+
+          <div className="divider">OR</div>
+
+          <GoogleAuthButton
+            onCredential={(credential) => {
+              void googleLogin(credential);
+            }}
+            isLoading={isGoogleAuthenticating}
+            label="Signing up with Google..."
+          />
 
           <div className="text-center"><p className="text-base-content/60">Already have an account? <Link to="/login" className="link link-primary">Sign in</Link></p></div>
         </div>

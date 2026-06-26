@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { ZodError } from "zod";
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { normalizeProfilePic } from "../lib/utils.js";
 import Message from "../models/message.model.js";
 import User from "../models/user.model.js";
 import { SendMessageSchema, ReceiverIdSchema } from "../schemas/message.schema.js";
@@ -24,7 +25,7 @@ export const getUserForSideBar = async (req: AuthRequest, res: Response) => {
         });
 
         return {
-          ...user.toObject(),
+          ...normalizeProfilePic(user.toObject()),
           unreadCount,
         };
       })

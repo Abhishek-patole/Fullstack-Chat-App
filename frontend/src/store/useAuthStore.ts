@@ -11,6 +11,7 @@ type AuthState = {
   authUser: AuthUser;
   isSigningUp: boolean;
   isLoggingIn: boolean;
+  isGoogleAuthenticating: boolean;
   isUpdatingProfile: boolean;
   onlineUsers: string[];
   isCheckingAuth: boolean;
@@ -19,6 +20,7 @@ type AuthState = {
   checkAuth: () => Promise<void>;
   signup: (data: any) => Promise<void>;
   login: (data: any) => Promise<void>;
+  googleLogin: (credential: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: any) => Promise<void>;
   connectSocket: () => void;
@@ -29,6 +31,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   authUser: null,
   isSigningUp: false,
   isLoggingIn: false,
+  isGoogleAuthenticating: false,
   isUpdatingProfile: false,
   onlineUsers: [],
   isCheckingAuth: true,
@@ -72,6 +75,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       toast.error((error as any)?.response?.data?.message || String(error));
     } finally {
       set({ isLoggingIn: false });
+    }
+  },
+
+  googleLogin: async (credential) => {
+    set({ isGoogleAuthenticating: true });
+    try {
+      const res = await axiosInstance.post("/auth/google", { credential });
+      set({ authUser: res.data });
+      toast.success("Signed in with Google successfully");
+      get().connectSocket();
+    } catch (error) {
+      toast.error((error as any)?.response?.data?.message || String(error));
+    } finally {
+      set({ isGoogleAuthenticating: false });
     }
   },
 

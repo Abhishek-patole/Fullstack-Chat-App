@@ -6,11 +6,12 @@ import { Eye, EyeOff, Loader2, Lock, Mail, MessageSquare } from "lucide-react";
 import toast from "react-hot-toast";
 import { LoginFormSchema } from "../lib/validation";
 import { ZodError } from "zod";
+import GoogleAuthButton from "../components/GoogleAuthButton";
 
 const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: "", password: "" });
-  const { login, isLoggingIn } = useAuthStore();
+  const { login, googleLogin, isLoggingIn, isGoogleAuthenticating } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +78,16 @@ const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
+
+          <div className="divider">OR</div>
+
+          <GoogleAuthButton
+            onCredential={(credential) => {
+              void googleLogin(credential);
+            }}
+            isLoading={isGoogleAuthenticating}
+            label="Signing in with Google..."
+          />
 
           <div className="text-center">
             <p className="text-base-content/60">
