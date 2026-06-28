@@ -1,3 +1,0 @@
-1. have to add refresh token
-2. have to add pagination on the "message.controller.js loads chat history without pagination, so the message list will grow large over time."
-3. have to add zod validation as well 
