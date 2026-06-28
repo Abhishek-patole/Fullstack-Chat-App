@@ -3,6 +3,7 @@ import { useChatStore } from "../store/useChatStore";
 import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
 import MessageSkeleton from "./skeletons/MessageSkeleton";
+import ChatSummaryDrawer from "./ChatSummaryDrawer";
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime } from "../lib/utils";
 
@@ -46,19 +47,23 @@ const ChatContainer: React.FC = () => {
 
   if (isMessagesLoading) {
     return (
-      <div className="flex-1 flex flex-col overflow-auto">
-        <ChatHeader />
-        <MessageSkeleton />
-        <MessageInput />
+      <div className="flex-1 flex overflow-hidden relative">
+        <div className="flex-1 flex flex-col min-w-0">
+          <ChatHeader />
+          <MessageSkeleton />
+          <MessageInput />
+        </div>
+        <ChatSummaryDrawer />
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-auto">
-      <ChatHeader />
+    <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex flex-col min-w-0">
+        <ChatHeader />
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message: any) => (
           <div
             key={message._id}
@@ -78,13 +83,21 @@ const ChatContainer: React.FC = () => {
               </div>
             </div>
             {/* time & status will be shown inside the bubble (WhatsApp-like) */}
-            <div className="chat-bubble flex flex-col relative">
+            <div className={`chat-bubble flex flex-col relative ${
+              String(message.senderId) === authUserId
+                ? "bg-primary text-primary-content"
+                : "bg-base-200 text-base-content"
+            }`}>
               {message.image && (
                 <img src={message.image} alt="Attachment" className="sm:max-w-[200px] rounded-md mb-2" />
               )}
               {message.text && <p>{message.text}</p>}
               {/* footer: time + status ticks positioned like WhatsApp */}
-              <div className="mt-2 self-end text-xs text-gray-400 flex items-center gap-1">
+              <div className={`mt-2 self-end text-xs flex items-center gap-1 ${
+                String(message.senderId) === authUserId
+                  ? "text-primary-content/70"
+                  : "text-base-content/70"
+              }`}>
                 <time className="opacity-60">{formatMessageTime(message.createdAt)}</time>
                 {String(message.senderId) === authUserId && (
                   <span className="ml-1 flex items-center" title={message.status}>
@@ -113,6 +126,8 @@ const ChatContainer: React.FC = () => {
 
       <MessageInput />
     </div>
+    <ChatSummaryDrawer />
+  </div>
   );
 };
 
