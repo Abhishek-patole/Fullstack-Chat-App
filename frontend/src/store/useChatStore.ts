@@ -23,6 +23,10 @@ type ChatState = {
   newMessageListener: ((msg: any) => void) | null;
   messageStatusListener: ((payload: any) => void) | null;
 
+  isSummaryDrawerOpen: boolean;
+  isSummaryLoading: boolean;
+  chatSummary: string | null;
+
   getUsers: () => Promise<void>;
   getMessages: (userId: string) => Promise<void>;
   sendMessage: (messageData: any) => Promise<void>;
@@ -31,6 +35,8 @@ type ChatState = {
   subscribeToMessages: () => void;
   unsubscribeFromMessages: () => void;
   setSelectedUser: (user: UserItem | null) => void;
+  setSummaryDrawerOpen: (isOpen: boolean) => void;
+  fetchChatSummary: (userId: string) => Promise<void>;
 };
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -42,6 +48,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   unreadCounts: {},
   newMessageListener: null,
   messageStatusListener: null,
+  isSummaryDrawerOpen: false,
+  isSummaryLoading: false,
+  chatSummary: null,
 
   getUsers: async () => {
     set({ isUsersLoading: true });
@@ -207,10 +216,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setSelectedUser: (selectedUser) => {
-    set({ selectedUser });
+    set({ selectedUser, chatSummary: null, isSummaryDrawerOpen: false });
 
     if (selectedUser?._id) {
       get().clearUnreadCount(selectedUser._id);
+    }
+  },
+
+  setSummaryDrawerOpen: (isOpen) => set({ isSummaryDrawerOpen: isOpen }),
+
+  fetchChatSummary: async (userId) => {
+    set({ isSummaryLoading: true });
+    try {
+      const res = await axiosInstance.get(`/messages/summarize/${userId}`);
+      set({ chatSummary: res.data.summary });
+    } catch (error) {
+      toast.error((error as any)?.response?.data?.message || String(error));
+    } finally {
+      set({ isSummaryLoading: false });
     }
   },
 }));
